@@ -2,30 +2,28 @@ import torch
 import numpy as np
 import os
 from .utils import shuffle_tensor, policy
+from tqdm import tqdm
 
 def rl_agent_train(model, env, num_epoch, step_max, epsilon, device, memory_size, train_freq, batch_size, mode, model_ast,
                    discount_rate, criterion, optimizer, update_model_ast_freq, epsilon_min, epsilon_reduce_freq, epsilon_reduce,
-                   writer, rewards, losses, save_freq, checkpoint_dir, global_step):
-    for epoch in range(num_epoch):
+                   writer, rewards, losses, save_freq, checkpoint_dir, global_step, window):
+    for epoch in tqdm(range(1)):
         state = env.reset()
-        step = 0
         total_loss = 0
         total_reward = 0
-
+        total_profit = []
         # add replay memory buffer for the agent
         state_memory = []
         action_memory = []
         reward_memory = []
-        observation_memory = [] # observation is actually the next state for boostrap
-        while True and step < step_max:
+        observation_memory = []  # observation is actually the next state for boostrap
+        for step in range(window, step_max):
             action = policy(model=model, state=state, epsilon=epsilon, device=device)
+            observation, stats = env(action=0)
 
-            observation, reward, profit, _, __ = env(action)
-
-            # add to memory buffer
             state_memory.append(state)
             action_memory.append(action)
-            reward_memory.append(reward)
+            reward_memory.append(stats[0])
             observation_memory.append(observation)
             if len(state_memory) > memory_size:
                 state_memory.pop(0)
@@ -55,29 +53,21 @@ def rl_agent_train(model, env, num_epoch, step_max, epsilon, device, memory_size
                         batch_reward = shuffle_reward[i: i+batch_size].type('torch.FloatTensor').to(device)
                         batch_observation = shuffle_observation[i: i+batch_size, :].type('torch.FloatTensor').to(device)
 
-                        q_value = model(batch_state)
+                        q_eval = model(batch_state).gather(1, batch_action.long().unsqueeze(1))
+                        q_next = model_ast(batch_observation).detach()
 
                         if mode == 'dqn':
-                            maxq = torch.Tensor.max(model_ast(batch_observation), dim=1)[1]
-                            mask = torch.zeros(batch_size).view(-1, 1).expand(-1, 3).to(device).scatter_(1, batch_action.type('torch.LongTensor').to(device).view(-1,1), 1)
-                            batch_reward_broadcast = batch_reward.view(-1, 1).expand(-1, 3)
-                            maxq_broadcast = maxq.view(-1, 1).expand(-1, 3)
-                            target = (batch_reward_broadcast + discount_rate  * maxq_broadcast) * mask
+                            q_target = batch_reward + discount_rate * q_next.max(1)[0]
 
                         elif mode == 'ddqn':
-                            batch_action_online = torch.Tensor.argmax(q_value, dim=1)
-                            maxq = model_ast(batch_observation)
-                            action_mask = torch.zeros(batch_size).view(-1, 1).expand(-1, 3).to(device).scatter_(1, batch_action_online.view(-1, 1), 1)
-                            mask = torch.zeros(batch_size).view(-1, 1).expand(-1, 3).to(device).scatter_(1, batch_action.type('torch.LongTensor').to(device).view(-1, 1), 1)
-                            batch_reward_broadcast = batch_reward.view(-1, 1).expand(-1, 3)
-                            maxq_broadcast = torch.Tensor.max(maxq*action_mask, dim=1)[1].view(-1,1).expand(-1, 3).type('torch.FloatTensor').to(device)
-                            target = (batch_reward_broadcast + discount_rate * maxq_broadcast) * mask
+                            q_target = batch_reward + discount_rate * q_next.gather(1, torch.argmax(
+                                model(batch_observation), dim=1, keepdim=True))
 
                         else:
                             raise ValueError('please input correct mode for rl agent, either "dqn", or "ddqn"')
 
-                        model.reset()
-                        loss = criterion(input=q_value, target=target)
+                        optimizer.zero_grad()
+                        loss = criterion(input=q_eval, target=q_target)
                         total_loss += loss.item()
                         loss.backward()
                         optimizer.step()
@@ -90,32 +80,27 @@ def rl_agent_train(model, env, num_epoch, step_max, epsilon, device, memory_size
             if epsilon > epsilon_min and global_step % epsilon_reduce_freq == 0:
                 epsilon -= epsilon_reduce
 
-            total_reward +=reward
+            total_reward += stats[0]
             state = observation
-            step += 1
             global_step += 1
-
             # here writer is tensorboardX
-            if writer and global_step % 500 == 0:
-                writer.add_scalar('loss', total_loss, global_step=global_step)
-                writer.add_scalar('reward', total_reward, global_step=global_step)
-
-            if global_step % 500 == 0:
-                print('-----------------------------------global step {}------------------------------------'.format(global_step))
-                print('total_reward : {}'.format(total_reward))
-                print('total_loss : {}'.format(total_loss))
-                print('-----------------------------------------------------------------------------------------')
 
         rewards.append(total_reward)
         losses.append(total_loss)
-
-        print('------------------------------------------epoch {}--------------------------------------------',format(epoch))
-        print('total loss : {}'.format(total_loss))
-        print('total reward : {}'.format(total_reward))
-        print('-----------------------------------------------------------------------------------------------')
-
+        total_profit.append(stats[1])
+        if writer:
+            writer.add_scalar('diff', stats[1]-stats[3]-1, global_step=global_step)
         if (epoch + 1) % save_freq == 0:
             checkpoint_state = {'epoch': epoch, 'state_dict': model.state_dict()}
-            torch.save(checkpoint_state, os.path.join(checkpoint_dir, '{}_checkpoint.pth.tar'.format(str(epoch)+ '_' + str(global_step))))
+            torch.save(checkpoint_state, os.path.join(checkpoint_dir, '{}_checkpoint.pth.tar'.format(str(epoch) + '_' + str(global_step))))
+    if writer:
+        writer.add_scalar('loss', total_loss, global_step=global_step)
+        writer.add_scalar('reward', total_reward, global_step=global_step)
+        writer.add_scalar('profit', total_profit, global_step=global_step)
 
-        return rewards, losses
+    stats[0] = rewards
+
+    stats[1] = sum(total_profit)/len(total_profit)
+    stats.append(stats[1]-stats[3])
+
+    return stats
