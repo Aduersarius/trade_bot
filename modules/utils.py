@@ -9,8 +9,8 @@ def policy(model, state, epsilon, device):
 
     # greedy policy
     if np.random.rand() > epsilon:
-        #print("thinked action")
-        action = model(torch.Tensor(np.array(state, dtype=np.float32)).view(-1,1, 14).to(device))
+        print("thinked action")
+        action = model(torch.Tensor(np.array(state, dtype=np.float32)).view(-1,1, 3).to(device))
         # print(action,"jhgf")
         # print(action.data,"yggc")
         action = action.data.argmax()

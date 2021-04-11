@@ -9,7 +9,7 @@ epsilon_reduce: 0.0005
 epsilon_reduce_freq: 500
 memory_size: 500
 train_freq: 10
-batch_size: 100
+batch_size: 10
 discount_rate: 0.97
 update_model_ast_freq: 500
 mode: 'ddqn'

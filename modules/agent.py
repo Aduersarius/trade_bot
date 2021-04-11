@@ -3,11 +3,11 @@ import numpy as np
 import os
 from .utils import shuffle_tensor, policy
 from tqdm import tqdm
-
+import torch.nn.functional as F
 def rl_agent_train(model, env, num_epoch, step_max, epsilon, device, memory_size, train_freq, batch_size, mode, model_ast,
                    discount_rate, criterion, optimizer, update_model_ast_freq, epsilon_min, epsilon_reduce_freq, epsilon_reduce,
                    writer, rewards, losses, save_freq, checkpoint_dir, global_step, window):
-    for epoch in tqdm(range(1)):
+    for epoch in tqdm(range(10)):
         state = env.reset()
         total_loss = 0
         total_reward = 0
@@ -19,7 +19,7 @@ def rl_agent_train(model, env, num_epoch, step_max, epsilon, device, memory_size
         observation_memory = []  # observation is actually the next state for boostrap
         for step in range(window, step_max):
             action = policy(model=model, state=state, epsilon=epsilon, device=device)
-            observation, stats = env(action=0)
+            observation, stats = env(action)
 
             state_memory.append(state)
             action_memory.append(action)
@@ -40,18 +40,19 @@ def rl_agent_train(model, env, num_epoch, step_max, epsilon, device, memory_size
                     action_tensor = torch.Tensor(np.array(memory[1], dtype=np.int32)).to(device)
                     reward_tensor = torch.Tensor(np.array(memory[2], dtype=np.int32)).to(device)
                     observation_tensor = torch.Tensor(np.array(memory[3], dtype=np.float32)).to(device)
-
+                    #print(state_tensor.shape,"tensor")
                     shuffle_index = shuffle_tensor(memory_size, device)
                     shuffle_state = torch.index_select(state_tensor, 0, shuffle_index)
                     shuffle_reward = torch.index_select(reward_tensor, 0, shuffle_index)
                     shuffle_action = torch.index_select(action_tensor, 0, shuffle_index)
                     shuffle_observation = torch.index_select(observation_tensor, 0, shuffle_index)
-
+                    #print(shuffle_state.shape,"shuffle")
                     for i in range(memory_size)[::batch_size]:
-                        batch_state = shuffle_state[i: i+batch_size, :].type('torch.FloatTensor').to(device)
-                        batch_action = shuffle_action[i: i+batch_size].type('torch.FloatTensor').to(device)
-                        batch_reward = shuffle_reward[i: i+batch_size].type('torch.FloatTensor').to(device)
-                        batch_observation = shuffle_observation[i: i+batch_size, :].type('torch.FloatTensor').to(device)
+                        batch_state = shuffle_state[i: i + batch_size, :].type('torch.FloatTensor').to(device)
+                        batch_action = shuffle_action[i: i + batch_size].type('torch.FloatTensor').to(device)
+                        batch_reward = shuffle_reward[i: i + batch_size].type('torch.FloatTensor').to(device)
+                        batch_observation = shuffle_observation[i: i + batch_size, :].type('torch.FloatTensor').to(
+                            device)
 
                         q_eval = model(batch_state).gather(1, batch_action.long().unsqueeze(1))
                         q_next = model_ast(batch_observation).detach()
@@ -67,7 +68,8 @@ def rl_agent_train(model, env, num_epoch, step_max, epsilon, device, memory_size
                             raise ValueError('please input correct mode for rl agent, either "dqn", or "ddqn"')
 
                         optimizer.zero_grad()
-                        loss = criterion(input=q_eval, target=q_target)
+                        #print(q_eval.view(-1, 1).shape, q_target[0].shape)
+                        loss = criterion(input=q_eval.view(-1, 1), target=q_target[0].view(-1, 1))
                         total_loss += loss.item()
                         loss.backward()
                         optimizer.step()
@@ -84,6 +86,13 @@ def rl_agent_train(model, env, num_epoch, step_max, epsilon, device, memory_size
             state = observation
             global_step += 1
             # here writer is tensorboardX
+            if global_step % 500 == 0:
+                print(
+                    '-----------------------------------global step {}------------------------------------'.format(
+                        global_step))
+                print('total_reward : {}'.format(total_reward))
+                print('total_loss : {}'.format(total_loss))
+                print('-----------------------------------------------------------------------------------------')
 
         rewards.append(total_reward)
         losses.append(total_loss)
@@ -93,10 +102,14 @@ def rl_agent_train(model, env, num_epoch, step_max, epsilon, device, memory_size
         if (epoch + 1) % save_freq == 0:
             checkpoint_state = {'epoch': epoch, 'state_dict': model.state_dict()}
             torch.save(checkpoint_state, os.path.join(checkpoint_dir, '{}_checkpoint.pth.tar'.format(str(epoch) + '_' + str(global_step))))
+
+
     if writer:
         writer.add_scalar('loss', total_loss, global_step=global_step)
         writer.add_scalar('reward', total_reward, global_step=global_step)
         writer.add_scalar('profit', total_profit, global_step=global_step)
+
+
 
     stats[0] = rewards
 

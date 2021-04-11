@@ -3,9 +3,10 @@ import torch.nn as nn
 
 
 class Q_Network(torch.nn.Module):
-    def __init__(self, input_size):
+    def __init__(self, input_size, n_feachs):
         super(Q_Network, self).__init__()
         self.input_size = input_size
+        self.n_feachs = n_feachs
         padding = 1
         dropout = 0.3
         self.backbone = torch.nn.Sequential(
@@ -40,7 +41,7 @@ class Q_Network(torch.nn.Module):
         )
 
         self.affine_layer = torch.nn.Sequential(
-            torch.nn.Linear(64 * 13, 2048),
+            torch.nn.Linear(64 * 3, 2048),
             torch.nn.SELU(),
             torch.nn.AlphaDropout(0.2),
             torch.nn.Linear(2048, 1024),
@@ -58,18 +59,21 @@ class Q_Network(torch.nn.Module):
         self.zero_grad()
 
     def forward(self, x):
-        x = self.backbone(x.view(-1, 1, self.input_size))
-        x = self.affine_layer(x.view(-1, 128 * 54))
+        print("simple network")
+        x = self.backbone(x.view(-1, 1, self.input_size*self.n_feachs))
+        print(x.shape)
+        x = self.affine_layer(x.view(-1, 64 * 54))
 
         return x
 
 
 class Dueling_Q_Network(nn.Module):
-    def __init__(self, input_size):
+    def __init__(self, input_size, n_feachs):
         super(Dueling_Q_Network, self).__init__()
         self.input_size = input_size
-        padding = 1
-        dropout = 0.3
+        self.n_feachs = n_feachs
+        padding = 0
+        dropout = 0.2
         self.backbone = torch.nn.Sequential(
             torch.nn.Conv1d(in_channels=1, out_channels=2, kernel_size=2, dilation=1, bias=True, padding=padding),
             torch.nn.ReLU(),
@@ -102,7 +106,7 @@ class Dueling_Q_Network(nn.Module):
         )
 
         self.state_value = torch.nn.Sequential(
-            torch.nn.Linear(64 * 13, 2048),
+            torch.nn.Linear(self.input_size * 129, 2048),
             torch.nn.SELU(),
             torch.nn.AlphaDropout(dropout),
             torch.nn.Linear(2048, 1024),
@@ -117,7 +121,7 @@ class Dueling_Q_Network(nn.Module):
         )
 
         self.advantage_value = torch.nn.Sequential(
-            torch.nn.Linear(64 * 13, 2048),
+            torch.nn.Linear(self.input_size * 129, 2048),
             torch.nn.SELU(),
             torch.nn.AlphaDropout(dropout),
             torch.nn.Linear(2048, 1024),
@@ -135,9 +139,11 @@ class Dueling_Q_Network(nn.Module):
         self.zero_grad()
 
     def forward(self, x):
-        x = self.backbone(x.reshape(-1, 1, self.input_size))
-        state_value = self.state_value(x.view(-1, 832))
-        advantage_value = self.advantage_value(x.view(-1, 832))
+
+        x = self.backbone(x.reshape(-1, 1, self.input_size*self.n_feachs))
+
+        state_value = self.state_value(x.view(-1, 129*self.input_size))
+        advantage_value = self.advantage_value(x.view(-1, 129*self.input_size))
         advantage_mean = torch.Tensor.mean(advantage_value, dim=1, keepdim=True)
         q_value = state_value.expand([-1, 3]) + (advantage_value - advantage_mean.expand([-1, 3]))
 
