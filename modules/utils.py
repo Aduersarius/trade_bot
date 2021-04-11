@@ -5,12 +5,15 @@ import os
 def policy(model, state, epsilon, device):
     # ----------------------------- epsilon greedy policy ----------------------------------------------
     # random policy
-    action  = np.random.randint(3)
+    action = np.random.randint(3)
 
-    # greedy polcy
+    # greedy policy
     if np.random.rand() > epsilon:
-        action = model(torch.Tensor(np.array(state, dtype=np.float32)).view(1, -1).to(device))
-        action = np.argmax(action.data)
+        #print("thinked action")
+        action = model(torch.Tensor(np.array(state, dtype=np.float32)).view(-1,1, 14).to(device))
+        # print(action,"jhgf")
+        # print(action.data,"yggc")
+        action = action.data.argmax()
 
     return action
 
