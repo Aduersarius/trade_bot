@@ -7,7 +7,7 @@ epsilon: 1.0
 epsilon_min: 0.05
 epsilon_reduce: 0.0005
 epsilon_reduce_freq: 500
-memory_size: 500
+memory_size: 50
 train_freq: 10
 batch_size: 10
 discount_rate: 0.97

@@ -31,7 +31,7 @@ def train(env, model, config):
     else:
         print('-----------------------------train from scratch------------------------------------')
 
-    if torch.cuda.device_count() >= 1:
+    if torch.cuda.device_count() > 1:
         print(" let's use , {} GPU".format(torch.cuda.device_count()))
         model = torch.nn.DataParallel(model)
         model_ast = torch.nn.DataParallel(model_ast)
@@ -82,25 +82,24 @@ def main(config):
     model = Dueling_Q_Network(64, n_feachs=n_feachs)
     size = 3
 
-    for i in range(0, 20, 2):
 
-        tickers = ["XRP/USD", "ETH/USD", "BTC/USD", "LTC/USD", "LINK/USD", "ADA/USD", "XLM/USD", "XMR/USD"]
-        train_data, _ = get_data(ticker=tickers[1], feed_window=1440, prediction_window=0, size=size)
+    tickers = ["XRP/USD", "ETH/USD", "BTC/USD", "LTC/USD", "LINK/USD", "ADA/USD", "XLM/USD", "XMR/USD"]
+    train_data, _ = get_data(ticker=tickers[1], feed_window=1440, prediction_window=0, size=size)
 
-        for episode in range(size):
+    for episode in range(size):
 
-            env = Environment(data=copy.deepcopy(train_data[episode]))
+        env = Environment(data=copy.deepcopy(train_data[episode]))
 
-            model, stats_rsi = train(
-                env=env,
-                model=model,
-                config=config
-            )
+        model, stats = train(
+            env=env,
+            model=model,
+            config=config
+        )
 
-            if (episode + 1) % config['save_freq'] == 0:
-                checkpoint_state = {'epoch': episode, 'state_dict': model.state_dict()}
-                torch.save(checkpoint_state,
-                           os.path.join(os.path.join(os.path.dirname(__file__) + '/checkpoint', config['checkpoint_dir']), '{}_checkpoint.pth.tar'.format(str(episode) + '_')))
+        if (episode + 1) % config['save_freq'] == 0:
+            checkpoint_state = {'epoch': episode, 'state_dict': model.state_dict()}
+            torch.save(checkpoint_state,
+                        os.path.join(os.path.join(os.path.dirname(__file__) + '/checkpoint', config['checkpoint_dir']), '{}_checkpoint.pth.tar'.format(str(episode) + '_')))
 
 
 if __name__ == "__main__":
