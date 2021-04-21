@@ -6,6 +6,8 @@ from tqdm import tqdm
 from random import randrange
 import datetime
 from datetime import date
+import numpy as np
+import copy
 
 
 def get_random_time(whole_day=True, crypto=True):
@@ -23,35 +25,36 @@ def get_random_time(whole_day=True, crypto=True):
     return current.strftime("20%y-%m-%d %H:%M")
 
 
-def get_data(ticker="AAPL", interval="1min", feed_window=10, prediction_window=1, size=30, whole_day=True):
+def get_data(ticker="AAPL", interval="1min", window=10, size=2, whole_day=True):
     x, y = [], []
-    for _ in tqdm(range(size)):
+    for _ in range(size):
         try:
+            td = TDClient(apikey)
             df = td.time_series(
                 symbol=ticker,
-                outputsize=feed_window + prediction_window,
+                outputsize=window,
                 interval=interval,
                 timezone='America/New_York',
                 start_date='2020-01-01 9:30',
                 end_date=get_random_time(whole_day)
-            )
+            ).with_avgprice()
 
-            df = df.with_rsi().with_supertrend()
+            df = df.with_rocr(time_period=1).with_rsi().with_macd().with_ultosc()
 
-            df = df.as_pandas().drop(['high', 'low', 'open'], axis=1).iloc[::-1]
-            #df = df.to_numpy()
-            #df = np.array(df)
+            df = df.as_pandas().iloc[::-1].to_numpy().astype(np.float16)
+
         except Exception as e:
             time.sleep(1)
             size += 1
             print(e)
             continue
-        x.append(df.iloc[:feed_window])
-        y.append(df.iloc[feed_window:])
+        
 
-    return x, y
+    return np.array(df)
 
-
-#x, y = get_data(ticker="BTC/USD", feed_window=1440, prediction_window=0, size=3)
+if __name__ == "__main__":
+    print(get_data())
+#
 #print(x)
+#print(get_random_time())
 

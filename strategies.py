@@ -1,4 +1,4 @@
-from modules.environment import *
+from environment import *
 from data import get_data
 import copy
 import numpy as np
