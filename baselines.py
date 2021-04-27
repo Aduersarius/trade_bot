@@ -30,7 +30,7 @@ if pathlib.Path("C:\\Users\emire\\vs_repositories\\trade_bot\\models\\"+model_na
     model = PPO.load("C:\\Users\emire\\vs_repositories\\trade_bot\\models\\"+model_name, env=env)
     print(f"==========load model {model_name}===============")
 else:
-    model = A2C("MlpPolicy", env, verbose=1, learning_rate=0.0003)
+    model = A2C('MlpPolicy', env, verbose=1, learning_rate=0.0003)
     print("=============creating new model===============")
 
 model.learn(total_timesteps=500000, callback=eval_callback)

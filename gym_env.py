@@ -24,6 +24,7 @@ class Environment(gym.Env):
         self.observation_space = spaces.Box(low=-255, high=255, shape=self.data[:self.window_length].flatten().shape, dtype=np.float16)
         self.eval_profit, self.eval_actions, self.eval_diff = [],[],[]
         
+        
 
     def reset(self):
         self.data = get_data(ticker="BTC/USD", window=1440, size=1)
@@ -40,11 +41,12 @@ class Environment(gym.Env):
         self.bought = 0
         self.money_flow = 0
         try:
-            self.window = copy.deepcopy(self.data[:self.window_length].flatten())
+            self.window = copy.deepcopy(self.data[:self.window_length])
             self.window[:,0] /= self.window[0,0]
-        except BaseException:
+        except BaseException as e:
+            print(e)
             self.reset()
-        return self.window
+        return self.window.flatten()
 
     def step(self, action):
         if self.discrete:
